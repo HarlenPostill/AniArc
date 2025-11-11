@@ -19,9 +19,6 @@ struct ContentView: View {
             Tab ("Saved", systemImage: "popcorn.fill") {
                 SavedView()
             }
-            Tab ("Profile", systemImage: "person") {
-                 ProfileView()
-            }
         }
         .tabBarMinimizeBehavior(.onScrollDown)
     }
