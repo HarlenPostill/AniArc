@@ -6,10 +6,15 @@
 //
 
 import SwiftUI
+import UIKit
 
 struct AnimeDetailView: View {
     let anime: AnimeItem
     @Environment(\.dismiss) var dismiss
+    @StateObject private var imdbService = IMDBService()
+    @State private var isLoadingStremio = false
+    @State private var showingError = false
+    @State private var errorMessage = ""
     
     var body: some View {
         NavigationStack {
@@ -103,10 +108,20 @@ struct AnimeDetailView: View {
                             .buttonStyle(.bordered)
                             .tint(.purple)
                             
-                            Button(action: {}) {
+                            Button(action: {
+                                Task {
+                                    await openInStremio()
+                                }
+                            }) {
                                 VStack(spacing: 6) {
-                                    Image(systemName: "play.fill")
-                                        .font(.title3)
+                                    if isLoadingStremio {
+                                        ProgressView()
+                                            .scaleEffect(0.8)
+                                            .frame(width: 20, height: 20)
+                                    } else {
+                                        Image(systemName: "play.fill")
+                                            .font(.title3)
+                                    }
                                     Text("Watch")
                                         .font(.caption)
                                 }
@@ -114,6 +129,7 @@ struct AnimeDetailView: View {
                                 .padding(.vertical, 12)
                             }
                             .buttonStyle(.borderedProminent)
+                            .disabled(isLoadingStremio)
                             
                             Button(action: {}) {
                                 VStack(spacing: 6) {
@@ -246,7 +262,72 @@ struct AnimeDetailView: View {
                 }
             }
             .toolbarBackground(.hidden, for: .navigationBar)
+            .alert("Error", isPresented: $showingError) {
+                Button("OK") { }
+            } message: {
+                Text(errorMessage)
+            }
         }
+    }
+    
+    // MARK: - Methods
+    
+    private func openInStremio() async {
+        isLoadingStremio = true
+        
+        do {
+            // Search for the anime on IMDB
+            guard let searchResponse = try await imdbService.searchTitles(query: anime.title, limit: 5),
+                  let firstResult = searchResponse.titles.first else {
+                throw IMDBError.noResultsFound
+            }
+            
+            // Build the Stremio URL
+            guard let stremioURL = imdbService.buildStremioURL(from: firstResult) else {
+                throw IMDBError.invalidURL
+            }
+            
+            // Debug: Print the URL being opened
+            print("Attempting to open Stremio URL: \(stremioURL)")
+            
+            // Open the URL
+            await MainActor.run {
+                // Check if we can query the URL scheme
+                let canQuery = UIApplication.shared.canOpenURL(stremioURL)
+                print("Can open URL: \(canQuery)")
+                
+                if canQuery {
+                    UIApplication.shared.open(stremioURL) { success in
+                        print("URL opened successfully: \(success)")
+                        if !success {
+                            DispatchQueue.main.async {
+                                self.errorMessage = "Failed to open Stremio. URL: \(stremioURL)"
+                                self.showingError = true
+                            }
+                        }
+                    }
+                } else {
+                    // Try to determine why it failed
+                    let stremioSchemeURL = URL(string: "stremio://")!
+                    let canOpenStremioScheme = UIApplication.shared.canOpenURL(stremioSchemeURL)
+                    
+                    if !canOpenStremioScheme {
+                        errorMessage = "Stremio app is not installed or URL scheme not whitelisted in Info.plist. Add 'stremio' to LSApplicationQueriesSchemes."
+                    } else {
+                        errorMessage = "Cannot open this specific Stremio URL: \(stremioURL)"
+                    }
+                    showingError = true
+                }
+            }
+            
+        } catch {
+            await MainActor.run {
+                errorMessage = error.localizedDescription
+                showingError = true
+            }
+        }
+        
+        isLoadingStremio = false
     }
     
     private var statusColor: Color {
@@ -260,6 +341,7 @@ struct AnimeDetailView: View {
         }
     }
 }
+
 
 // MARK: - Supporting Views for Detail
 struct StatItem: View {
