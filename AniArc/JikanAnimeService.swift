@@ -157,6 +157,53 @@ struct JikanBroadcast: Codable {
     let string: String?
 }
 
+struct JikanGenre: Codable {
+    let malID: Int
+    let type: String
+    let name: String
+    let url: String
+    
+    private enum CodingKeys: String, CodingKey {
+        case malID = "mal_id"
+        case type, name, url
+    }
+}
+
+struct JikanStudio: Codable {
+    let malID: Int
+    let type: String
+    let name: String
+    let url: String
+    
+    private enum CodingKeys: String, CodingKey {
+        case malID = "mal_id"
+        case type, name, url
+    }
+}
+
+// MARK: - Recommendations Models
+struct JikanRecommendationsResponse: Codable {
+    let data: [JikanRecommendation]
+}
+
+struct JikanRecommendation: Codable {
+    let entry: JikanRecommendationEntry
+    let url: String
+    let votes: Int
+}
+
+struct JikanRecommendationEntry: Codable {
+    let malId: Int
+    let url: String
+    let images: JikanImages
+    let title: String
+    
+    private enum CodingKeys: String, CodingKey {
+        case malId = "mal_id"
+        case url, images, title
+    }
+}
+
 // MARK: - Jikan API Service
 @MainActor
 class JikanAnimeService: ObservableObject {
@@ -245,6 +292,13 @@ class JikanAnimeService: ObservableObject {
         let hasMore = response.pagination?.hasNextPage ?? false
         
         return (animeItems, hasMore)
+    }
+    
+    /// Fetch anime recommendations
+    func getAnimeRecommendations(animeId: Int) async throws -> JikanRecommendationsResponse {
+        let endpoint = "/anime/\(animeId)/recommendations"
+        let response: JikanRecommendationsResponse = try await performRequest(endpoint: endpoint)
+        return response
     }
     
     // MARK: - Private Helper Methods

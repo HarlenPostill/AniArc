@@ -9,6 +9,7 @@ import SwiftUI
 
 struct HomeView: View {
     @StateObject private var dataService = AnimeDataService()
+    @Environment(UserDataManager.self) var userDataManager
     
     var body: some View {
         NavigationStack {
@@ -68,6 +69,7 @@ struct HomeView: View {
 // MARK: - Featured Anime Card
 struct FeaturedAnimeCard: View {
     let anime: AnimeItem
+    @Environment(UserDataManager.self) var userDataManager
     @State private var showingDetail = false
     
     var body: some View {
@@ -134,6 +136,7 @@ struct FeaturedAnimeCard: View {
         }
         .fullScreenCover(isPresented: $showingDetail) {
             AnimeDetailView(anime: anime)
+                .environment(userDataManager)
         }
     }
 }

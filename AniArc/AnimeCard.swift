@@ -12,7 +12,7 @@ struct AnimeCard: View {
     @Environment(UserDataManager.self) var userDataManager
 
     var body: some View {
-        NavigationLink(destination: AnimeDetailView(anime: anime)) {
+        NavigationLink(destination: AnimeDetailView(anime: anime).environment(userDataManager)) {
             cardContent
         }
         .buttonStyle(PlainButtonStyle())

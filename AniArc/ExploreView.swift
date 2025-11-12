@@ -37,16 +37,22 @@ enum AnimeCategory: String, CaseIterable, Identifiable {
 struct ExploreView: View {
     @StateObject private var dataService = AnimeDataService()
     @State private var searchText: String = ""
-    @State private var selectedGenres: Set<String> = []
+    @State private var selectedGenres: Set<String>
     @State private var showFilters: Bool = false
     @State private var selectedCategory: AnimeCategory = .seasonal
     @State private var isSearching: Bool = false
+    @Environment(UserDataManager.self) var userDataManager
 
     private let availableGenres = [
         "Action", "Adventure", "Comedy", "Drama", "Fantasy", "Romance",
         "Sci-Fi", "Slice of Life", "Supernatural", "Military", "Horror", "Mystery",
         "Psychological", "Thriller", "Sports", "School"
     ]
+    
+    // Initialize with optional pre-selected genres
+    init(initialGenres: Set<String> = []) {
+        self._selectedGenres = State(initialValue: initialGenres)
+    }
 
     private var filteredItems: [AnimeItem] {
         dataService.getFilteredItems(
@@ -145,7 +151,11 @@ struct ExploreView: View {
         }
         .task {
             if dataService.animeItems.isEmpty {
-                await loadDataForCategory()
+                if !selectedGenres.isEmpty {
+                    await dataService.loadAnimeByGenres(Array(selectedGenres))
+                } else {
+                    await loadDataForCategory()
+                }
             }
         }
     }

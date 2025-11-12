@@ -63,8 +63,10 @@ struct AnimeItem: Identifiable, Codable, Hashable {
         
         title = try container.decodeIfPresent(String.self, forKey: .title) ?? "Unknown Title"
         
-        // Handle image URL - Jikan API has nested image structure
-        if let images = try? container.decode([String: [String: String]].self, forKey: .imageURL),
+        // Handle image URL - can be a string or nested structure
+        if let simpleImageURL = try? container.decode(String.self, forKey: .imageURL) {
+            imageURL = simpleImageURL
+        } else if let images = try? container.decode([String: [String: String]].self, forKey: .imageURL),
            let jpg = images["jpg"],
            let imageUrl = jpg["image_url"] {
             imageURL = imageUrl
@@ -74,9 +76,11 @@ struct AnimeItem: Identifiable, Codable, Hashable {
         
         synopsis = try container.decodeIfPresent(String.self, forKey: .synopsis) ?? "No synopsis available."
         
-        // Handle genres array
-        if let genresArray = try? container.decode([JikanGenre].self, forKey: .genres) {
-            genres = genresArray.map { $0.name }
+        // Handle genres array - for simple API responses, genres might be strings or objects
+        if let genresArray = try? container.decode([String].self, forKey: .genres) {
+            genres = genresArray
+        } else if let genresObjects = try? container.decode([[String: String]].self, forKey: .genres) {
+            genres = genresObjects.compactMap { $0["name"] }
         } else {
             genres = []
         }
@@ -88,9 +92,11 @@ struct AnimeItem: Identifiable, Codable, Hashable {
         type = try container.decodeIfPresent(String.self, forKey: .type)
         source = try container.decodeIfPresent(String.self, forKey: .source)
         
-        // Handle studios array
-        if let studiosArray = try? container.decode([JikanStudio].self, forKey: .studios) {
-            studios = studiosArray.map { $0.name }
+        // Handle studios array - for simple API responses, studios might be strings or objects
+        if let studiosArray = try? container.decode([String].self, forKey: .studios) {
+            studios = studiosArray
+        } else if let studiosObjects = try? container.decode([[String: String]].self, forKey: .studios) {
+            studios = studiosObjects.compactMap { $0["name"] }
         } else {
             studios = []
         }
@@ -134,7 +140,6 @@ struct AnimeItem: Identifiable, Codable, Hashable {
         try container.encode(title, forKey: .title)
         try container.encode(imageURL, forKey: .imageURL)
         try container.encode(synopsis, forKey: .synopsis)
-        try container.encode(score, forKey: .score)
         try container.encode(genres, forKey: .genres)
         try container.encode(episodeCount, forKey: .episodeCount)
         try container.encode(status, forKey: .status)
@@ -147,31 +152,6 @@ struct AnimeItem: Identifiable, Codable, Hashable {
         try container.encodeIfPresent(scoredBy, forKey: .scoredBy)
         try container.encodeIfPresent(rank, forKey: .rank)
         try container.encodeIfPresent(popularity, forKey: .popularity)
-    }
-}
-
-// MARK: - Supporting Jikan API Models
-struct JikanGenre: Codable {
-    let malID: Int
-    let type: String
-    let name: String
-    let url: String
-    
-    private enum CodingKeys: String, CodingKey {
-        case malID = "mal_id"
-        case type, name, url
-    }
-}
-
-struct JikanStudio: Codable {
-    let malID: Int
-    let type: String
-    let name: String
-    let url: String
-    
-    private enum CodingKeys: String, CodingKey {
-        case malID = "mal_id"
-        case type, name, url
     }
 }
 
