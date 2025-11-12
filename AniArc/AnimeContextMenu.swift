@@ -9,14 +9,17 @@ import SwiftUI
 
 struct AnimeContextMenu: View {
     let anime: AnimeItem
+    @Environment(UserDataManager.self) var userDataManager
     
     var body: some View {
-        Button(action: { saveAnime() }) {
-            Label("Save to Library", systemImage: "bookmark")
+        Button(action: { addToWatchlist() }) {
+            Label(userDataManager.isInWatchlist(anime.id) ? "Remove from Watchlist" : "Add to Watchlist", 
+                  systemImage: userDataManager.isInWatchlist(anime.id) ? "minus.circle" : "plus.circle")
         }
         
-        Button(action: { addToWatchlist() }) {
-            Label("Add to Watchlist", systemImage: "plus.circle")
+        Button(action: { toggleFavorite() }) {
+            Label(userDataManager.isFavorite(anime.id) ? "Remove from Favorites" : "Add to Favorites", 
+                  systemImage: userDataManager.isFavorite(anime.id) ? "heart.slash" : "heart")
         }
         
         Button(action: { shareAnime() }) {
@@ -34,12 +37,16 @@ struct AnimeContextMenu: View {
         }
     }
     
-    private func saveAnime() {
-        print("Saving \(anime.title)")
+    private func toggleFavorite() {
+        userDataManager.toggleFavorite(anime.id)
     }
     
     private func addToWatchlist() {
-        print("Adding \(anime.title) to watchlist")
+        if userDataManager.isInWatchlist(anime.id) {
+            userDataManager.removeFromWatchlist(anime.id)
+        } else {
+            userDataManager.addToWatchlist(anime)
+        }
     }
     
     private func shareAnime() {
@@ -47,7 +54,7 @@ struct AnimeContextMenu: View {
     }
     
     private func markAsWatched() {
-        print("Marking \(anime.title) as watched")
+        userDataManager.updateWatchStatus(animeID: anime.id, status: .completed)
     }
     
     private func reportContent() {

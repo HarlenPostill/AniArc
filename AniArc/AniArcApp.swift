@@ -9,9 +9,12 @@ import SwiftUI
 
 @main
 struct AniArcApp: App {
+    @State private var userDataManager = UserDataManager()
+    
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .environment(userDataManager)
         }
     }
 }

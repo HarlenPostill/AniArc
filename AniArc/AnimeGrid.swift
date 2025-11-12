@@ -52,6 +52,7 @@ struct AnimeGrid: View {
         AnimeGrid(
             animeItems: [
                 AnimeItem(
+                    id: 1,
                     title: "Preview Anime",
                     imageURL: "preview_image",
                     synopsis: "A preview anime item",

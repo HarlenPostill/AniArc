@@ -12,52 +12,87 @@ import Combine
 class AnimeDataService: ObservableObject {
     @Published var animeItems: [AnimeItem] = []
     @Published var isLoading: Bool = false
+    @Published var errorMessage: String? = nil
+    @Published var currentPage: Int = 1
+    @Published var hasMorePages: Bool = true
     
-    private let availableGenres = ["Action", "Adventure", "Comedy", "Drama", "Fantasy", "Romance", "Sci-Fi", "Slice of Life"]
+    private let jikanService = JikanAnimeService()
+    private var currentLoadingTask: Task<Void, Never>?
+    private var searchTask: Task<Void, Never>?
+    
+    private let availableGenres = ["Action", "Adventure", "Comedy", "Drama", "Fantasy", "Romance", "Sci-Fi", "Slice of Life", "Supernatural", "Military", "Horror", "Mystery", "Psychological", "Thriller", "Sports", "School"]
+    
+    // MARK: - Public API Methods
     
     func loadInitialItems() async {
-        isLoading = true
-        // Simulate API call
-        try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
-        animeItems = generateStubAnime(count: 20)
-        isLoading = false
+        currentLoadingTask?.cancel()
+        currentLoadingTask = Task {
+            await performInitialLoad()
+        }
+        await currentLoadingTask?.value
     }
     
     func loadMoreItems() async {
-        guard !isLoading else { return }
-        isLoading = true
-        
-        // Simulate API call
-        try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
-        animeItems.append(contentsOf: generateStubAnime(count: 10))
-        isLoading = false
+        guard !isLoading && hasMorePages else { return }
+        currentLoadingTask?.cancel()
+        currentLoadingTask = Task {
+            await performLoadMore()
+        }
+        await currentLoadingTask?.value
     }
     
-    private func generateStubAnime(count: Int) -> [AnimeItem] {
-        let titles = ["Demon Slayer", "Attack on Titan", "My Hero Academia", "Jujutsu Kaisen",
-                     "One Piece", "Naruto", "Death Note", "Steins;Gate", "Cowboy Bebop",
-                     "Fullmetal Alchemist", "Hunter x Hunter", "Mob Psycho 100", "Spy x Family",
-                     "Chainsaw Man", "Bleach", "Tokyo Ghoul", "Sword Art Online", "Re:Zero"]
-        
-        return (0..<count).map { index in
-            AnimeItem(
-                title: titles.randomElement() ?? "Anime \(index)",
-                imageURL: "anime_\(Int.random(in: 1...10))",
-                synopsis: "An epic tale of adventure, friendship, and determination in a world filled with extraordinary powers and challenges.",
-                rating: Double.random(in: 6.5...9.9),
-                genres: Array(availableGenres.shuffled().prefix(Int.random(in: 2...4))),
-                episodeCount: Int.random(in: 12...500),
-                status: ["Ongoing", "Completed"].randomElement()!
-            )
+    func searchAnime(query: String) async {
+        searchTask?.cancel()
+        searchTask = Task {
+            await performSearch(query: query)
         }
+        await searchTask?.value
     }
+    
+    func loadTopAnime() async {
+        currentLoadingTask?.cancel()
+        currentLoadingTask = Task {
+            await performTopAnimeLoad()
+        }
+        await currentLoadingTask?.value
+    }
+    
+    func loadSeasonalAnime() async {
+        currentLoadingTask?.cancel()
+        currentLoadingTask = Task {
+            await performSeasonalLoad()
+        }
+        await currentLoadingTask?.value
+    }
+    
+    func loadUpcomingAnime() async {
+        currentLoadingTask?.cancel()
+        currentLoadingTask = Task {
+            await performUpcomingLoad()
+        }
+        await currentLoadingTask?.value
+    }
+    
+    func loadAnimeByGenres(_ genreNames: [String]) async {
+        currentLoadingTask?.cancel()
+        currentLoadingTask = Task {
+            await performGenreLoad(genreNames: genreNames)
+        }
+        await currentLoadingTask?.value
+    }
+    
+    // MARK: - Filtering Methods
     
     func getFilteredItems(searchText: String, selectedGenres: Set<String>) -> [AnimeItem] {
         var items = animeItems
         
-        // Filter by search text
+        // Filter by search text (local filtering for already loaded items)
         if !searchText.isEmpty {
-            items = items.filter { $0.title.localizedCaseInsensitiveContains(searchText) }
+            items = items.filter { anime in
+                anime.title.localizedCaseInsensitiveContains(searchText) ||
+                anime.synopsis.localizedCaseInsensitiveContains(searchText) ||
+                anime.genres.contains { $0.localizedCaseInsensitiveContains(searchText) }
+            }
         }
         
         // Filter by genres
@@ -68,5 +103,188 @@ class AnimeDataService: ObservableObject {
         }
         
         return items
+    }
+    
+    // MARK: - Private Implementation Methods
+    
+    private func performInitialLoad() async {
+        guard !isLoading else { return }
+        
+        isLoading = true
+        errorMessage = nil
+        currentPage = 1
+        
+        do {
+            let (newAnime, hasMore) = try await jikanService.fetchCurrentSeasonAnime(page: currentPage)
+            
+            if Task.isCancelled { return }
+            
+            animeItems = newAnime
+            hasMorePages = hasMore
+            currentPage = hasMore ? currentPage + 1 : currentPage
+        } catch {
+            if !Task.isCancelled {
+                errorMessage = "Failed to load anime: \(error.localizedDescription)"
+                print("Error loading initial items: \(error)")
+            }
+        }
+        
+        isLoading = false
+    }
+    
+    private func performLoadMore() async {
+        isLoading = true
+        
+        do {
+            let (newAnime, hasMore) = try await jikanService.fetchCurrentSeasonAnime(page: currentPage)
+            
+            if Task.isCancelled { return }
+            
+            animeItems.append(contentsOf: newAnime)
+            hasMorePages = hasMore
+            currentPage = hasMore ? currentPage + 1 : currentPage
+        } catch {
+            if !Task.isCancelled {
+                errorMessage = "Failed to load more anime: \(error.localizedDescription)"
+                print("Error loading more items: \(error)")
+            }
+        }
+        
+        isLoading = false
+    }
+    
+    private func performSearch(query: String) async {
+        guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            await loadInitialItems()
+            return
+        }
+        
+        isLoading = true
+        errorMessage = nil
+        currentPage = 1
+        
+        do {
+            let (searchResults, hasMore) = try await jikanService.searchAnime(query: query, page: currentPage)
+            
+            if Task.isCancelled { return }
+            
+            animeItems = searchResults
+            hasMorePages = hasMore
+            currentPage = hasMore ? currentPage + 1 : currentPage
+        } catch {
+            if !Task.isCancelled {
+                errorMessage = "Search failed: \(error.localizedDescription)"
+                print("Error searching anime: \(error)")
+            }
+        }
+        
+        isLoading = false
+    }
+    
+    private func performTopAnimeLoad() async {
+        isLoading = true
+        errorMessage = nil
+        currentPage = 1
+        
+        do {
+            let (topAnime, hasMore) = try await jikanService.fetchTopAnime(page: currentPage)
+            
+            if Task.isCancelled { return }
+            
+            animeItems = topAnime
+            hasMorePages = hasMore
+            currentPage = hasMore ? currentPage + 1 : currentPage
+        } catch {
+            if !Task.isCancelled {
+                errorMessage = "Failed to load top anime: \(error.localizedDescription)"
+                print("Error loading top anime: \(error)")
+            }
+        }
+        
+        isLoading = false
+    }
+    
+    private func performSeasonalLoad() async {
+        isLoading = true
+        errorMessage = nil
+        currentPage = 1
+        
+        do {
+            let (seasonalAnime, hasMore) = try await jikanService.fetchCurrentSeasonAnime(page: currentPage)
+            
+            if Task.isCancelled { return }
+            
+            animeItems = seasonalAnime
+            hasMorePages = hasMore
+            currentPage = hasMore ? currentPage + 1 : currentPage
+        } catch {
+            if !Task.isCancelled {
+                errorMessage = "Failed to load seasonal anime: \(error.localizedDescription)"
+                print("Error loading seasonal anime: \(error)")
+            }
+        }
+        
+        isLoading = false
+    }
+    
+    private func performUpcomingLoad() async {
+        isLoading = true
+        errorMessage = nil
+        currentPage = 1
+        
+        do {
+            let (upcomingAnime, hasMore) = try await jikanService.fetchUpcomingAnime(page: currentPage)
+            
+            if Task.isCancelled { return }
+            
+            animeItems = upcomingAnime
+            hasMorePages = hasMore
+            currentPage = hasMore ? currentPage + 1 : currentPage
+        } catch {
+            if !Task.isCancelled {
+                errorMessage = "Failed to load upcoming anime: \(error.localizedDescription)"
+                print("Error loading upcoming anime: \(error)")
+            }
+        }
+        
+        isLoading = false
+    }
+    
+    private func performGenreLoad(genreNames: [String]) async {
+        isLoading = true
+        errorMessage = nil
+        currentPage = 1
+        
+        // Convert genre names to IDs
+        let genreIDs = genreNames.compactMap { JikanAnimeService.genreMap[$0] }
+        
+        guard !genreIDs.isEmpty else {
+            isLoading = false
+            return
+        }
+        
+        do {
+            let (genreAnime, hasMore) = try await jikanService.fetchAnimeByGenres(genreIDs: genreIDs, page: currentPage)
+            
+            if Task.isCancelled { return }
+            
+            animeItems = genreAnime
+            hasMorePages = hasMore
+            currentPage = hasMore ? currentPage + 1 : currentPage
+        } catch {
+            if !Task.isCancelled {
+                errorMessage = "Failed to load anime by genre: \(error.localizedDescription)"
+                print("Error loading anime by genre: \(error)")
+            }
+        }
+        
+        isLoading = false
+    }
+    
+    // MARK: - Cleanup
+    
+    deinit {
+        currentLoadingTask?.cancel()
+        searchTask?.cancel()
     }
 }
